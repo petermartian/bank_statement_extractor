@@ -60,7 +60,7 @@ KNOWN_NAMES = [
     "Trzl - Westtech Limited", "Trzl - Willow Commercial Limited", "Trzl - Techcore Limited",
     "Fidelity/Westtech", "Putsherd Integrated", "Beverly Trust",
     "Gilbert", "Rukib Heritage", "Aduroja Temilade",
-    "Telex Charge", "Transfer Charge", "Ocrativane Integrated"
+    "Telex Charge", "Transfer Charge", "Ocrativane Integrated", "WESTTECH:FIDELITY"
 ]
 KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
