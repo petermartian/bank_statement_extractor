@@ -1,4 +1,4 @@
-# Path: /extract_providus_transaction_name.py
+
 
 import streamlit as st
 import pandas as pd
@@ -102,7 +102,6 @@ def export_summary(df):
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        # Ensure indentation is correct below this block
     ext = os.path.splitext(uploaded_file.name)[-1].lower()
     if ext == '.csv':
         df = pd.read_csv(uploaded_file)
