@@ -8,12 +8,17 @@ from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
 st.set_page_config(page_title="Bank Statement Processor", layout="wide")
-st.title("🧾 Generic Bank Statement Name Extractor")
+st.title("🧾 S9 Bank Statement Name Extractor")
 
 st.markdown("Upload your Excel or CSV file. Use the downloadable template below with the following headers: **Date, Transaction Details/Narration, Debit, Credit, Balance**")
 
 with st.expander("📥 Download Sample Template"):
-    with open("/mnt/data/sample_statement.xlsx", "rb") as f:
+    from io import BytesIO
+sample_excel = BytesIO()
+sample_df = pd.DataFrame(columns=["Date", "Transaction Details/Narration", "Debit", "Credit", "Balance"])
+sample_df.to_excel(sample_excel, index=False)
+sample_excel.seek(0)
+with sample_excel as f:
         st.download_button("Download sample_statement.xlsx", f, file_name="sample_statement.xlsx")
 
 uploaded_files = st.file_uploader("Choose one or more files", type=["xlsx", "xls", "csv"], accept_multiple_files=True)
@@ -97,7 +102,7 @@ def export_summary(df):
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
-        ext = os.path.splitext(uploaded_file.name)[-1].lower()
+    ext = os.path.splitext(uploaded_file.name)[-1].lower()
     if ext == '.csv':
         df = pd.read_csv(uploaded_file)
     else:
@@ -123,32 +128,32 @@ if uploaded_files:
         st.subheader("📊 Summary by Name & Type")
         st.dataframe(summary)
 
-    with st.expander("⬇ Download All Processed Files as ZIP"):
-        import zipfile, tempfile
-        zip_buffer = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-        with zipfile.ZipFile(zip_buffer.name, "w") as zf:
-            for uploaded_file in uploaded_files:
-                ext = os.path.splitext(uploaded_file.name)[-1].lower()
-                if ext == '.csv':
-                    df = pd.read_csv(uploaded_file)
-                else:
-                    df = pd.read_excel(uploaded_file, sheet_name=0)
+        with st.expander("⬇ Download All Processed Files as ZIP"):
+    import zipfile, tempfile
+    zip_buffer = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
+    with zipfile.ZipFile(zip_buffer.name, "w") as zf:
+        for uploaded_file in uploaded_files:
+            ext = os.path.splitext(uploaded_file.name)[-1].lower()
+            if ext == '.csv':
+                df = pd.read_csv(uploaded_file)
+            else:
+                df = pd.read_excel(uploaded_file, sheet_name=0)
 
-                for col in df.columns:
-                    if any(k in col.lower() for k in ['narration', 'description', 'details']):
-                        df.rename(columns={col: 'description'}, inplace=True)
-                    if 'debit' in col.lower():
-                        df.rename(columns={col: 'debit'}, inplace=True)
-                    if 'credit' in col.lower():
-                        df.rename(columns={col: 'credit'}, inplace=True)
+            for col in df.columns:
+                if any(k in col.lower() for k in ['narration', 'description', 'details']):
+                    df.rename(columns={col: 'description'}, inplace=True)
+                if 'debit' in col.lower():
+                    df.rename(columns={col: 'debit'}, inplace=True)
+                if 'credit' in col.lower():
+                    df.rename(columns={col: 'credit'}, inplace=True)
 
-                if 'description' in df.columns:
-                    df['Extracted Name'] = df['description'].apply(extract_transaction_name)
-                    df['Transaction Type'] = df.apply(categorize_transaction, axis=1)
+            if 'description' in df.columns:
+                df['Extracted Name'] = df['description'].apply(extract_transaction_name)
+                df['Transaction Type'] = df.apply(categorize_transaction, axis=1)
 
-                    cleaned_name = f"cleaned_{uploaded_file.name.replace('.xlsx','').replace('.csv','')}.xlsx"
-                    highlight_and_save_excel(df, cleaned_name)
-                    zf.write(cleaned_name, arcname=cleaned_name)
+                cleaned_name = f"cleaned_{uploaded_file.name.replace('.xlsx','').replace('.csv','')}.xlsx"
+                highlight_and_save_excel(df, cleaned_name)
+                zf.write(cleaned_name, arcname=cleaned_name)
 
     with open(zip_buffer.name, "rb") as f:
         st.download_button("Download All as ZIP", data=f, file_name="cleaned_statements.zip", mime="application/zip")
