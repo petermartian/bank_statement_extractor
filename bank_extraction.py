@@ -6,17 +6,18 @@ from io import BytesIO
 import logging
 import xlsxwriter
 import gspread
+import json
 from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURE ---
 st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
 logging.basicConfig(level=logging.INFO)
 
-# --- LOAD KNOWN NAMES FROM GOOGLE SHEET ---
+# --- Load Known Names from Google Sheet using Streamlit Secrets ---
 @st.cache_data(ttl=3600)
 def load_known_names():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
-    creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
+    creds_dict = json.loads(st.secrets["GOOGLE_CREDS"])
+    creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, scope)
     client = gspread.authorize(creds)
     sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1n7Uifi2bxK8Fz_arVxHvdeoL6m_d_8UR8QDpbNgsozs/edit#gid=0")
     worksheet = sheet.get_worksheet(0)
@@ -26,19 +27,19 @@ def load_known_names():
 
 KNOWN_NAMES, KNOWN_NAMES_LOWER = load_known_names()
 
-# --- SIDEBAR MENU ---
+# --- Sidebar Menu ---
 with st.sidebar:
     selected_menu = st.selectbox("📂 Select Menu", ["Upload & Extract Names", "Bank Reconciliation"])
 
-# -------------------- MENU 1 --------------------
+# --- Menu 1: Upload & Extract Names ---
 if selected_menu == "Upload & Extract Names":
     st.title("📄 Upload Bank Statement")
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
 
     def clean_entity(name):
-        name = re.sub(r'[^A-Z\s\-]', '', name.upper())
-        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\b', '', name)
-        name = re.sub(r'\s+', ' ', name).strip()
+        name = re.sub(r'[^A-Z\\s\\-]', '', name.upper())
+        name = re.sub(r'\\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\\b', '', name)
+        name = re.sub(r'\\s+', ' ', name).strip()
         return name.title()
 
     def extract_transaction_name(description):
@@ -48,7 +49,7 @@ if selected_menu == "Upload & Extract Names":
         for idx, name in enumerate(KNOWN_NAMES_LOWER):
             if name in desc_lower:
                 return KNOWN_NAMES[idx]
-        parts = re.split(r'\||/', description)
+        parts = re.split(r'\\||/', description)
         for part in reversed(parts):
             cleaned = clean_entity(part)
             if len(cleaned.split()) >= 2:
@@ -76,7 +77,6 @@ if selected_menu == "Upload & Extract Names":
         with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
             for sheet_name, df in processed_sheets.items():
                 df.columns = [c.lower() for c in df.columns]
-
                 for col in df.columns:
                     if any(k in col.lower() for k in ['narration', 'description', 'details']):
                         df.rename(columns={col: 'description'}, inplace=True)
@@ -106,14 +106,9 @@ if selected_menu == "Upload & Extract Names":
                 st.dataframe(summary)
 
         output_excel.seek(0)
-        st.download_button(
-            "📥 Download Processed Excel File",
-            output_excel,
-            file_name=f"processed_{uploaded_file.name}",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.download_button("📥 Download Processed Excel File", output_excel, file_name=f"processed_{uploaded_file.name}")
 
-# -------------------- MENU 2 --------------------
+# --- Menu 2: Bank Reconciliation ---
 elif selected_menu == "Bank Reconciliation":
     st.title("🏦 Bank Reconciliation")
     recon_file = st.file_uploader("Upload Processed Excel File", type=["xlsx"], key="recon_file")
@@ -124,8 +119,8 @@ elif selected_menu == "Bank Reconciliation":
         total_usd = 0.0
         total_ngn = 0.0
         balance_summary = []
-
         output_excel = BytesIO()
+
         with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
             workbook = writer.book
             head_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
@@ -182,6 +177,5 @@ elif selected_menu == "Bank Reconciliation":
         col1, col2 = st.columns(2)
         col1.metric("USD Total", f"${total_usd:,.2f}")
         col2.metric("NGN Total", f"₦{total_ngn:,.2f}")
-
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
