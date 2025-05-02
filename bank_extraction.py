@@ -7,8 +7,8 @@ import os
 from openpyxl import load_workbook
 from openpyxl.styles import PatternFill
 
-st.set_page_config(page_title="Bank Statement Processor", layout="wide")
-st.title("🧾 S9 Bank Statement Name Extractor")
+st.set_page_config(page_title="S9 Bank Statement Name Extractor", layout="wide")
+st.title("S9 Bank Statement Name Extractor")
 
 st.markdown("Upload your Excel or CSV file. Use the downloadable template below with the following headers: **Date, Transaction Details/Narration, Debit, Credit, Balance**")
 
@@ -102,6 +102,7 @@ def export_summary(df):
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
+        # Ensure indentation is correct below this block
     ext = os.path.splitext(uploaded_file.name)[-1].lower()
     if ext == '.csv':
         df = pd.read_csv(uploaded_file)
