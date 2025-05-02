@@ -1,5 +1,3 @@
-
-
 import streamlit as st
 import pandas as pd
 import re
@@ -102,6 +100,36 @@ def export_summary(df):
 
 if uploaded_files:
     for uploaded_file in uploaded_files:
+        ext = os.path.splitext(uploaded_file.name)[-1].lower()
+        if ext == '.csv':
+            df = pd.read_csv(uploaded_file)
+        else:
+            df = pd.read_excel(uploaded_file, sheet_name=0)
+
+        for col in df.columns:
+            if any(k in col.lower() for k in ['narration', 'description', 'details']):
+                df.rename(columns={col: 'description'}, inplace=True)
+            if 'debit' in col.lower():
+                df.rename(columns={col: 'debit'}, inplace=True)
+            if 'credit' in col.lower():
+                df.rename(columns={col: 'credit'}, inplace=True)
+
+        if 'description' in df.columns:
+            df['Extracted Name'] = df['description'].apply(extract_transaction_name)
+            df['Transaction Type'] = df.apply(categorize_transaction, axis=1)
+
+            st.success(f"✅ Processed: {uploaded_file.name}")
+            st.dataframe(df[['description', 'Extracted Name', 'Transaction Type']].head(20))
+
+            summary = export_summary(df)
+            st.subheader(f"📊 Summary: {uploaded_file.name}")
+            st.dataframe(summary)
+
+            cleaned_name = f"cleaned_{uploaded_file.name.replace('.xlsx','').replace('.csv','')}.xlsx"
+            highlight_and_save_excel(df, cleaned_name)
+            if 'cleaned_files' not in st.session_state:
+                st.session_state.cleaned_files = []
+            st.session_state.cleaned_files.append(cleaned_name)
     ext = os.path.splitext(uploaded_file.name)[-1].lower()
     if ext == '.csv':
         df = pd.read_csv(uploaded_file)
