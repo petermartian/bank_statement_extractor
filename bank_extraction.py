@@ -141,7 +141,10 @@ elif selected_menu == "Bank Reconciliation":
                         debit: 'sum',
                         credit: 'sum'
                     }).reset_index()
-                    pivot.to_excel(writer, sheet_name=f"Pivot_{sheet}", index=False)
+                    safe_sheet_name = f"Pivot_{sheet}"[:31]  # truncate to 31 chars
+                    safe_sheet_name = re.sub(r'[\\/*?:\\[\\]]', '', safe_sheet_name)  # remove invalid chars
+                    pivot.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+
                     ws = writer.sheets[f"Pivot_{sheet}"]
                     for i, col in enumerate(pivot.columns):
                         ws.write(0, i, col, head_fmt)
