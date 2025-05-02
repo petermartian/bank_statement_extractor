@@ -12,7 +12,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
 logging.basicConfig(level=logging.INFO)
 
-# --- Load Known Names from Google Sheet using Streamlit Secrets ---
 @st.cache_data(ttl=3600)
 def load_known_names():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -27,11 +26,9 @@ def load_known_names():
 
 KNOWN_NAMES, KNOWN_NAMES_LOWER = load_known_names()
 
-# --- Sidebar Menu ---
 with st.sidebar:
     selected_menu = st.selectbox("📂 Select Menu", ["Upload & Extract Names", "Bank Reconciliation"])
 
-# --- Menu 1: Upload & Extract Names ---
 if selected_menu == "Upload & Extract Names":
     st.title("📄 Upload Bank Statement")
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
@@ -93,7 +90,8 @@ if selected_menu == "Upload & Extract Names":
 
                 for col in ['debit', 'credit', 'balance']:
                     if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                        df[col] = df[col].astype(str).str.replace(",", "").str.strip()
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
                 df.to_excel(writer, sheet_name=f"Processed_{sheet_name}", index=False)
 
@@ -108,7 +106,6 @@ if selected_menu == "Upload & Extract Names":
         output_excel.seek(0)
         st.download_button("📥 Download Processed Excel File", output_excel, file_name=f"processed_{uploaded_file.name}")
 
-# --- Menu 2: Bank Reconciliation ---
 elif selected_menu == "Bank Reconciliation":
     st.title("🏦 Bank Reconciliation")
     recon_file = st.file_uploader("Upload Processed Excel File", type=["xlsx"], key="recon_file")
