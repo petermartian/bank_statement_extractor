@@ -34,7 +34,7 @@ with st.expander("📥 Download Sample Template"):
 # File uploader for Excel/CSV files (single file for simplicity)
 uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["xlsx", "xls", "csv"])
 
-# Known name list (pre-filled)
+# Known name list (updated with new names, avoiding duplicates)
 KNOWN_NAMES = [
     "DANGOTE CEMENT", "Agrited Nigeria Ltd", "Max air",
     "IDEOS TECHNOLOGY", "BIBAGE TECHNOLOGY",
@@ -56,7 +56,13 @@ KNOWN_NAMES = [
     "Tekwanet Business Solutions-Ft Ifo C", "Putsherd Integrated Solutions-Ft Ifo C",
     "Tmdk Terminal - Fidelity", "Chizoba Eunice Ezeonyido", "Lender Tech Solutions",
     "Dania Oluwaseun Nurudeen", "Privolt Oil And Gas Services", "Tradedepot",
-    "Transactworld"
+    "Transactworld",
+    "Airpeace", "Willow Commercial Limited", "Payaza", "Flutterwave",
+    "Code Crafter", "Bridge Building", "Angel exports",
+    "Trzl - Westtech Limited", "Trzl - Willow Commercial Limited", "Trzl - Techcore Limited",
+    "Fidelity/Westtech", "Putsherd Integrated", "Beverly Trust",
+    "Gilbert", "Rukib Heritage", "Hofdtede Essentials", "Aduroja Temilade",
+    "Telex Charge", "Transfer Charge"
 ]
 KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
@@ -123,7 +129,9 @@ def extract_transaction_name(description):
 
     description = description.upper()
     description = re.sub(r'(\*+\d+|\d{8,}|\d{4,}/\d+|\d{5,})', '', description)
-    description = re.sub(r'WILLOW COMMERCIAL( LIMITED)?', '', description)
+    # Only remove 'WILLOW COMMERCIAL' if not a known name
+    if 'WILLOW COMMERCIAL LIMITED' not in desc_lower:
+        description = re.sub(r'WILLOW COMMERCIAL( LIMITED)?', '', description)
     description = re.sub(r'(PAYT TO|RIB:PP|PRB TRSF TO WILOW|TO WILLOW)', '', description)
     description = re.sub(r'A/C TO A/C TRANSFER THROUGH IBS INTERNET\s+TRANSFER FROM', '', description)
     description = re.sub(r'-?\s*FT\s+GTL\s+WILLOW\s+COM.*$', '', description)
@@ -223,7 +231,7 @@ if uploaded_file:
             # Display results
             st.success(f"✅ Processed sheet: {sheet_name}")
             st.subheader(f"Preview: {sheet_name}")
-            st.dataframe(df[['description', 'Extracted Name']].head(20))
+            st.dataistung(df[['description', 'Extracted Name']].head(20))
 
             # Display summary
             summary = export_summary(df)
