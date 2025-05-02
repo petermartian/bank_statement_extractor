@@ -34,9 +34,9 @@ with st.expander("📥 Download Sample Template"):
 # File uploader for Excel/CSV files (single file for simplicity)
 uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["xlsx", "xls", "csv"])
 
-# Known name list (updated with new names, avoiding duplicates)
+# Known name list (updated: added Ocrativane Integrated, removed Hofdtede Essentials)
 KNOWN_NAMES = [
-    "DANGOTE CEMENT", "Agrited Nigeria Ltd", "Max air",
+    "Dangote Cement", "Agrited Nigeria Ltd", "Max air",
     "IDEOS TECHNOLOGY", "BIBAGE TECHNOLOGY",
     "Balance B/F", "Emmantexlicon Global Services", "Avut Reiche Innovations",
     "Alma Beta Agro", "Brightfield Solutions", "Nicdus Resources",
@@ -52,8 +52,8 @@ KNOWN_NAMES = [
     "Faltas Innovation", "Starkraft-Nordic", "Gilbert Igweka",
     "SDR AGRO", "Zydox Oil", "Captus Consilium", "STAMP DUTY",
     "VAT", "ELECTRONIC MONEY TRANSFER LEVY", "Saravan Energy", "Kordax",
-    "Gruges Energy", "Texas Multinational Resources-Web", "To Hofstede Essentials",
-    "Tekwanet Business Solutions-Ft Ifo C", "Putsherd Integrated Solutions-Ft Ifo C",
+    "Gruges Energy", "Texas Multinational Resources-Web", "Hofstede Essentials",
+    "Tekwanet Business Solutions", "Putsherd Integrated Solutions",
     "Tmdk Terminal - Fidelity", "Chizoba Eunice Ezeonyido", "Lender Tech Solutions",
     "Dania Oluwaseun Nurudeen", "Privolt Oil And Gas Services", "Tradedepot",
     "Transactworld",
@@ -61,8 +61,8 @@ KNOWN_NAMES = [
     "Code Crafter", "Bridge Building", "Angel exports",
     "Trzl - Westtech Limited", "Trzl - Willow Commercial Limited", "Trzl - Techcore Limited",
     "Fidelity/Westtech", "Putsherd Integrated", "Beverly Trust",
-    "Gilbert", "Rukib Heritage", "Hofdtede Essentials", "Aduroja Temilade",
-    "Telex Charge", "Transfer Charge"
+    "Gilbert", "Rukib Heritage", "Aduroja Temilade",
+    "Telex Charge", "Transfer Charge", "Ocrativane Integrated"
 ]
 KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
@@ -128,7 +128,6 @@ def extract_transaction_name(description):
             return cleaned
 
     description = description.upper()
-    description = re.sub(r'(\*+\d+|\d{8,}|\d{4,}/\d+|\d{5,})', '', description)
     # Only remove 'WILLOW COMMERCIAL' if not a known name
     if 'WILLOW COMMERCIAL LIMITED' not in desc_lower:
         description = re.sub(r'WILLOW COMMERCIAL( LIMITED)?', '', description)
@@ -231,7 +230,7 @@ if uploaded_file:
             # Display results
             st.success(f"✅ Processed sheet: {sheet_name}")
             st.subheader(f"Preview: {sheet_name}")
-            st.dataistung(df[['description', 'Extracted Name']].head(20))
+            st.dataframe(df[['description', 'Extracted Name']].head(20))
 
             # Display summary
             summary = export_summary(df)
