@@ -5,56 +5,35 @@ import os
 from io import BytesIO
 import logging
 import xlsxwriter
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
 
-# --- CONFIGURE LOGGING ---
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-
-# --- PAGE CONFIG ---
+# --- CONFIGURE ---
 st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
+logging.basicConfig(level=logging.INFO)
+
+# --- LOAD KNOWN NAMES FROM GOOGLE SHEET ---
+@st.cache_data(ttl=3600)
+def load_known_names():
+    scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
+    creds = ServiceAccountCredentials.from_json_keyfile_name("creds.json", scope)
+    client = gspread.authorize(creds)
+    sheet = client.open_by_url("https://docs.google.com/spreadsheets/d/1n7Uifi2bxK8Fz_arVxHvdeoL6m_d_8UR8QDpbNgsozs/edit#gid=0")
+    worksheet = sheet.get_worksheet(0)
+    names = worksheet.col_values(1)
+    names = [name.strip() for name in names if name.strip() and name.lower() != 'name']
+    return names, [n.lower() for n in names]
+
+KNOWN_NAMES, KNOWN_NAMES_LOWER = load_known_names()
 
 # --- SIDEBAR MENU ---
 with st.sidebar:
     selected_menu = st.selectbox("📂 Select Menu", ["Upload & Extract Names", "Bank Reconciliation"])
 
-# -------------------- MENU 1: Upload & Extract Names --------------------
+# -------------------- MENU 1 --------------------
 if selected_menu == "Upload & Extract Names":
     st.title("📄 Upload Bank Statement")
-    st.markdown("Upload Excel or CSV. Each sheet must have: Date, Narration/Description, Debit, Credit, Balance.")
-
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
-
-    # Known name list (from provided code)
-    KNOWN_NAMES = [
-        "Dangote Cement", "Agrited Nigeria Ltd", "Max air",
-        "IDEOS TECHNOLOGY", "BIBAGE TECHNOLOGY",
-        "Balance B/F", "Emmantexlicon Global Services", "Avut Reiche Innovations",
-        "Alma Beta Agro", "Brightfield Solutions", "Nicdus Resources",
-        "Blemaur Oil And Gas", "Westtech Limited", "Adekoya Adeniyi Ayobami",
-        "Venture Garden Nig", "Greensource Insignia", "Coupons Retail",
-        "Morgan Adebowale Omotayo", "Alade Ibijoke", "Venur Nigeria Technology",
-        "Ifunanya Chinenye Igboanugo", "Nyerhovwo Alex Urhude", "Rebecca Ogochukwu Ekwueme",
-        "Dealmakers Energy", "AGK ENERGIES LIMITED", "Adisa Moshood Abiola",
-        "Classmobile Technologies", "Adino Partners", "Bluebulb Energy",
-        "Tanout Technologies", "Alasan Muhammad Nakofa Ventures", "Ardor Innovations",
-        "Tradepot", "Salmnine Investment", "Denero Global Services",
-        "Ifeoluwa Damola Kuponiyi", "Obi Ernest", "Proost Integrated",
-        "Faltas Innovation", "Starkraft-Nordic", "Gilbert Igweka",
-        "SDR AGRO", "Zydox Oil", "Captus Consilium", "STAMP DUTY",
-        "VAT", "ELECTRONIC MONEY TRANSFER LEVY", "Saravan Energy", "Kordax",
-        "Gruges Energy", "Texas Multinational Resources-Web", "Hofstede Essentials",
-        "Tekwanet Business Solutions", "Putsherd Integrated Solutions",
-        "Tmdk Terminal - Fidelity", "Chizoba Eunice Ezeonyido", "Lender Tech Solutions",
-        "Dania Oluwaseun Nurudeen", "Privolt Oil And Gas Services", "Tradedepot",
-        "Transactworld",
-        "Airpeace", "Willow Commercial Limited", "Payaza", "Flutterwave",
-        "Code Crafter", "Bridge Building", "Angel exports",
-        "Trzl - Westtech Limited", "Trzl - Willow Commercial Limited", "Trzl - Techcore Limited",
-        "Fidelity/Westtech", "Putsherd Integrated", "Beverly Trust",
-        "Gilbert", "Rukib Heritage", "Aduroja Temilade",
-        "Telex Charge", "Transfer Charge", "Ocrativane Integrated",
-        "WESTTECH:FIDELITY", "Adino Global", "TRZL-TECHCORE LIMITED", "Swift Charge"
-    ]
-    KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
     def clean_entity(name):
         name = re.sub(r'[^A-Z\s\-]', '', name.upper())
@@ -134,10 +113,9 @@ if selected_menu == "Upload & Extract Names":
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-# -------------------- MENU 2: Bank Reconciliation --------------------
+# -------------------- MENU 2 --------------------
 elif selected_menu == "Bank Reconciliation":
     st.title("🏦 Bank Reconciliation")
-
     recon_file = st.file_uploader("Upload Processed Excel File", type=["xlsx"], key="recon_file")
 
     if recon_file:
@@ -146,7 +124,6 @@ elif selected_menu == "Bank Reconciliation":
         total_usd = 0.0
         total_ngn = 0.0
         balance_summary = []
-        pivot_results = {}
 
         output_excel = BytesIO()
         with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
@@ -172,7 +149,6 @@ elif selected_menu == "Bank Reconciliation":
                         debit: 'sum',
                         credit: 'sum'
                     }).reset_index()
-                    pivot_results[sheet] = pivot
                     pivot.to_excel(writer, sheet_name=f"Pivot_{sheet}", index=False)
                     ws = writer.sheets[f"Pivot_{sheet}"]
                     for i, col in enumerate(pivot.columns):
@@ -193,7 +169,6 @@ elif selected_menu == "Bank Reconciliation":
 
                 st.divider()
 
-            # Summary
             summary_df = pd.DataFrame(balance_summary, columns=["Sheet", "Closing Balance", "Currency"])
             summary_df.to_excel(writer, sheet_name="Closing Balances", index=False)
             ws = writer.sheets["Closing Balances"]
