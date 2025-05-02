@@ -230,6 +230,10 @@ if uploaded_file:
             st.subheader(f"Preview: {sheet_name}")
             st.dataframe(df[['description', 'Extracted Name']].head(20))
 
+           
+            if df.empty or 'Extracted Name' not in df.columns:
+                continue
+
             # Display summary
             summary = export_summary(df)
             st.subheader(f"📊 Summary: {sheet_name}")
