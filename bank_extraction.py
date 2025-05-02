@@ -1,5 +1,3 @@
-# Path: /extract_providus_transaction_name.py
-
 import streamlit as st
 import pandas as pd
 import re
