@@ -5,10 +5,8 @@ import pandas as pd
 import re
 import os
 import logging
-from openpyxl import load_workbook
 from io import BytesIO
-import zipfile
-import tempfile
+from openpyxl import load_workbook
 
 # Configure logging
 logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %(message)s')
@@ -16,13 +14,15 @@ logging.basicConfig(level=logging.DEBUG, format='%(asctime)s - %(levelname)s - %
 st.set_page_config(page_title="S9 Bank Statement Name Extractor", layout="wide")
 st.title("S9 Bank Statement Name Extractor")
 
-st.markdown("Upload your Excel or CSV file. Use the downloadable template below with the following headers: *Date, Transaction Details/Narration, Debit, Credit, Balance*")
+st.markdown("Upload an Excel file with multiple sheets or a CSV file. Each sheet should have headers: *Date, Transaction Details/Narration, Debit, Credit, Balance*. Use the downloadable template below.")
 
 # Downloadable sample template
 with st.expander("📥 Download Sample Template"):
     sample_excel = BytesIO()
     sample_df = pd.DataFrame(columns=["Date", "Transaction Details/Narration", "Debit", "Credit", "Balance"])
-    sample_df.to_excel(sample_excel, index=False)
+    with pd.ExcelWriter(sample_excel, engine='openpyxl') as writer:
+        sample_df.to_excel(writer, sheet_name='Sheet1', index=False)
+        sample_df.to_excel(writer, sheet_name='Sheet2', index=False)  # Example with multiple sheets
     sample_excel.seek(0)
     st.download_button(
         "Download sample_statement.xlsx",
@@ -31,8 +31,8 @@ with st.expander("📥 Download Sample Template"):
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
 
-# File uploader for multiple Excel/CSV files
-uploaded_files = st.file_uploader("Choose one or more files", type=["xlsx", "xls", "csv"], accept_multiple_files=True)
+# File uploader for Excel/CSV files (single file for simplicity)
+uploaded_file = st.file_uploader("Choose an Excel or CSV file", type=["xlsx", "xls", "csv"])
 
 # Known name list (pre-filled)
 KNOWN_NAMES = [
@@ -155,17 +155,6 @@ def extract_transaction_name(description):
     logging.debug(f"Fallback to cleaned description: {result}")
     return result
 
-def save_excel(df, output_path):
-    """
-    Saves a DataFrame to Excel without highlighting.
-    
-    Args:
-        df (pd.DataFrame): The DataFrame to save.
-        output_path (str): The path to save the Excel file.
-    """
-    df.to_excel(output_path, index=False)
-    logging.info(f"Saved Excel file: {output_path}")
-
 def export_summary(df):
     """
     Creates a summary of transactions grouped by Extracted Name.
@@ -178,73 +167,81 @@ def export_summary(df):
     """
     return df.groupby('Extracted Name').size().reset_index(name='Count')
 
-# Process uploaded files
-if uploaded_files:
-    st.session_state.cleaned_files = []  # Initialize session state for cleaned files
+# Process uploaded file
+if uploaded_file:
+    logging.info(f"Processing file: {uploaded_file.name}")
+    ext = os.path.splitext(uploaded_file.name)[-1].lower()
+    output_excel = BytesIO()
+    processed_sheets = {}
 
-    for uploaded_file in uploaded_files:
-        logging.info(f"Processing file: {uploaded_file.name}")
-        ext = os.path.splitext(uploaded_file.name)[-1].lower()
-        try:
-            if ext == '.csv':
-                df = pd.read_csv(uploaded_file)
-            else:
-                df = pd.read_excel(uploaded_file, sheet_name=0)
-        except Exception as e:
-            st.error(f"Error reading file {uploaded_file.name}: {str(e)}")
-            logging.error(f"Failed to read file {uploaded_file.name}: {str(e)}")
-            continue
+    try:
+        if ext == '.csv':
+            # Treat CSV as a single sheet
+            df = pd.read_csv(uploaded_file)
+            processed_sheets['Sheet1'] = df
+        else:
+            # Read all sheets from Excel
+            processed_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+    except Exception as e:
+        st.error(f"Error reading file {uploaded_file.name}: {str(e)}")
+        logging.error(f"Failed to read file {uploaded_file.name}: {str(e)}")
+        st.stop()
 
-        # Normalize column names
-        for col in df.columns:
-            if any(k in col.lower() for k in ['narration', 'description', 'details']):
-                df.rename(columns={col: 'description'}, inplace=True)
-            if 'debit' in col.lower():
-                df.rename(columns={col: 'debit'}, inplace=True)
-            if 'credit' in col.lower():
-                df.rename(columns={col: 'credit'}, inplace=True)
+    # Initialize progress bar
+    total_sheets = len(processed_sheets)
+    progress_bar = st.progress(0)
+    current_progress = 0
 
-        # Check for required columns
-        if 'description' not in df.columns:
-            st.error(f"Error: File {uploaded_file.name} must contain a column for 'Narration', 'Description', or 'Details'.")
-            logging.error(f"Missing description column in {uploaded_file.name}")
-            continue
+    # Process each sheet
+    with pd.ExcelWriter(output_excel, engine='openpyxl') as writer:
+        for sheet_name, df in processed_sheets.items():
+            logging.info(f"Processing sheet: {sheet_name}")
+            
+            # Normalize column names
+            for col in df.columns:
+                if any(k in col.lower() for k in ['narration', 'description', 'details']):
+                    df.rename(columns={col: 'description'}, inplace=True)
+                if 'debit' in col.lower():
+                    df.rename(columns={col: 'debit'}, inplace=True)
+                if 'credit' in col.lower():
+                    df.rename(columns={col: 'credit'}, inplace=True)
 
-        # Process transactions with progress bar
-        if 'description' in df.columns:
-            progress_bar = st.progress(0)
-            total_rows = len(df)
+            # Check for required columns
+            if 'description' not in df.columns:
+                st.error(f"Error: Sheet '{sheet_name}' in {uploaded_file.name} must contain a column for 'Narration', 'Description', or 'Details'.")
+                logging.error(f"Missing description column in sheet {sheet_name}")
+                continue
+
+            # Process transactions
             df['Extracted Name'] = df['description'].apply(extract_transaction_name)
-            progress_bar.progress(1.0)
-            progress_bar.empty()
 
-            st.success(f"✅ Processed: {uploaded_file.name}")
+            # Write processed DataFrame to output Excel
+            output_sheet_name = f"Processed_{sheet_name}"
+            df.to_excel(writer, sheet_name=output_sheet_name, index=False)
+            logging.info(f"Wrote processed data to sheet: {output_sheet_name}")
+
+            # Display results
+            st.success(f"✅ Processed sheet: {sheet_name}")
+            st.subheader(f"Preview: {sheet_name}")
             st.dataframe(df[['description', 'Extracted Name']].head(20))
 
             # Display summary
             summary = export_summary(df)
-            st.subheader(f"📊 Summary: {uploaded_file.name}")
+            st.subheader(f"📊 Summary: {sheet_name}")
             st.dataframe(summary)
 
-            # Save cleaned file
-            cleaned_name = f"cleaned_{uploaded_file.name.replace('.xlsx','').replace('.csv','')}.xlsx"
-            save_excel(df, cleaned_name)
-            st.session_state.cleaned_files.append(cleaned_name)
+            # Update progress
+            current_progress += 1
+            progress_bar.progress(current_progress / total_sheets)
 
-    # Provide ZIP download for all processed files
-    if st.session_state.cleaned_files:
-        with st.expander("⬇ Download All Processed Files as ZIP"):
-            zip_buffer = tempfile.NamedTemporaryFile(delete=False, suffix=".zip")
-            with zipfile.ZipFile(zip_buffer.name, "w") as zf:
-                for cleaned_name in st.session_state.cleaned_files:
-                    zf.write(cleaned_name, arcname=cleaned_name)
-                    logging.info(f"Added to ZIP: {cleaned_name}")
+    progress_bar.empty()
+    output_excel.seek(0)
 
-            with open(zip_buffer.name, "rb") as f:
-                st.download_button(
-                    "Download All as ZIP",
-                    data=f,
-                    file_name="cleaned_statements.zip",
-                    mime="application/zip"
-                )
-            logging.info("Prepared ZIP file for download")
+    # Provide download button for the processed Excel file
+    st.download_button(
+        "Download Processed Excel File",
+        output_excel,
+        file_name=f"processed_{uploaded_file.name}",
+        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+    )
+    logging.info(f"Prepared output Excel file for download: processed_{uploaded_file.name}")
