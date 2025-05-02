@@ -6,134 +6,157 @@ from io import BytesIO
 import logging
 import xlsxwriter
 
-st.set_page_config(page_title="Bank Statement Processor", layout="wide")
+# --- CONFIGURE LOGGING ---
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
-# Sidebar navigation
+# --- PAGE CONFIG ---
+st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
+
+# --- SIDEBAR MENU ---
 with st.sidebar:
     selected_menu = st.selectbox("📂 Select Menu", ["Upload & Extract Names", "Bank Reconciliation"])
 
 # -------------------- MENU 1: Upload & Extract Names --------------------
 if selected_menu == "Upload & Extract Names":
     st.title("📄 Upload Bank Statement")
-    st.markdown("Upload Excel with tabs. Each tab should have: Date, Description, Debit, Credit, Balance.")
+    st.markdown("Upload Excel or CSV. Each sheet must have: Date, Narration/Description, Debit, Credit, Balance.")
 
-    uploaded_file = st.file_uploader("Upload Bank Statement Excel", type=["xlsx"])
+    uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
+
+    KNOWN_NAMES = [...]  # Your known names list as provided earlier
+    KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
     def clean_entity(name):
         name = re.sub(r'[^A-Z\s\-]', '', name.upper())
-        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|TRANSFER|ACCOUNT|AC|USD|NIP)\b', '', name)
+        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\b', '', name)
         name = re.sub(r'\s+', ' ', name).strip()
         return name.title()
 
     def extract_transaction_name(description):
         if not isinstance(description, str):
             return ''
-        description = description.upper()
+        desc_lower = description.lower()
+        for idx, name in enumerate(KNOWN_NAMES_LOWER):
+            if name in desc_lower:
+                return KNOWN_NAMES[idx]
         parts = re.split(r'\||/', description)
         for part in reversed(parts):
-            part = clean_entity(part)
-            if len(part.split()) >= 2:
-                return part
+            cleaned = clean_entity(part)
+            if len(cleaned.split()) >= 2:
+                return cleaned
         return clean_entity(description)
 
+    def export_summary(df):
+        return df.groupby('Extracted Name').size().reset_index(name='Count')
+
     if uploaded_file:
-        xl = pd.ExcelFile(uploaded_file)
-        all_sheets = xl.sheet_names
+        ext = os.path.splitext(uploaded_file.name)[-1].lower()
         output_excel = BytesIO()
+        processed_sheets = {}
+
+        try:
+            if ext == '.csv':
+                df = pd.read_csv(uploaded_file)
+                processed_sheets['Sheet1'] = df
+            else:
+                processed_sheets = pd.read_excel(uploaded_file, sheet_name=None)
+        except Exception as e:
+            st.error(f"Error reading file: {e}")
+            st.stop()
 
         with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
-            workbook = writer.book
-            money_fmt = workbook.add_format({'num_format': '#,##0.00'})
-            head_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
-
-            for sheet in all_sheets:
-                df = xl.parse(sheet)
+            for sheet_name, df in processed_sheets.items():
                 df.columns = [c.lower() for c in df.columns]
 
-                desc_col = next((c for c in df.columns if 'narration' in c or 'description' in c or 'details' in c), None)
-                if not desc_col:
-                    st.error(f"Missing description column in {sheet}")
+                for col in df.columns:
+                    if any(k in col.lower() for k in ['narration', 'description', 'details']):
+                        df.rename(columns={col: 'description'}, inplace=True)
+                    if 'debit' in col.lower():
+                        df.rename(columns={col: 'debit'}, inplace=True)
+                    if 'credit' in col.lower():
+                        df.rename(columns={col: 'credit'}, inplace=True)
+
+                if 'description' not in df.columns:
+                    st.error(f"Missing 'description' column in {sheet_name}")
                     continue
 
-                df['description'] = df[desc_col]
                 df['Extracted Name'] = df['description'].apply(extract_transaction_name)
 
                 for col in ['debit', 'credit', 'balance']:
                     if col in df.columns:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                pivot = df.groupby('Extracted Name').agg({
-                    'debit': 'sum',
-                    'credit': 'sum'
-                }).reset_index()
+                df.to_excel(writer, sheet_name=f"Processed_{sheet_name}", index=False)
 
-                df.to_excel(writer, sheet_name=f"Processed_{sheet}", index=False)
-                pivot.to_excel(writer, sheet_name=f"Pivot_{sheet}", index=False)
+                st.success(f"✅ Processed: {sheet_name}")
+                st.subheader(f"🔍 Preview: {sheet_name}")
+                st.dataframe(df[['description', 'Extracted Name', 'debit', 'credit']].head(20))
 
-                ws = writer.sheets[f"Pivot_{sheet}"]
-                for i, col in enumerate(pivot.columns):
-                    ws.write(0, i, col, head_fmt)
-                    ws.set_column(i, i, 22, money_fmt)
-
-                st.subheader(f"📊 Pivot Table for {sheet}")
-                st.dataframe(pivot)
+                summary = export_summary(df)
+                st.subheader(f"📊 Summary: {sheet_name}")
+                st.dataframe(summary)
 
         output_excel.seek(0)
-        st.download_button("📥 Download Processed Excel", output_excel, file_name="processed_output.xlsx")
+        st.download_button(
+            "📥 Download Processed Excel File",
+            output_excel,
+            file_name=f"processed_{uploaded_file.name}",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
 
 # -------------------- MENU 2: Bank Reconciliation --------------------
 elif selected_menu == "Bank Reconciliation":
     st.title("🏦 Bank Reconciliation")
 
-    recon_file = st.file_uploader("Upload Reconciliation Excel File", type=["xlsx"], key="recon_upload")
+    recon_file = st.file_uploader("Upload Processed Excel File", type=["xlsx"], key="recon_file")
 
     if recon_file:
         xl = pd.ExcelFile(recon_file)
-        all_sheets = xl.sheet_names
+        sheet_names = [s for s in xl.sheet_names if s.startswith("Processed_")]
         total_usd = 0.0
         total_ngn = 0.0
-        balance_data = []
-        pivot_data = {}
+        balance_summary = []
+        pivot_results = {}
 
         output_excel = BytesIO()
         with pd.ExcelWriter(output_excel, engine='xlsxwriter') as writer:
             workbook = writer.book
-            money_fmt = workbook.add_format({'num_format': '#,##0.00'})
             head_fmt = workbook.add_format({'bold': True, 'bg_color': '#D9E1F2', 'border': 1})
+            money_fmt = workbook.add_format({'num_format': '#,##0.00'})
 
-            for sheet in all_sheets:
+            for sheet in sheet_names:
                 df = xl.parse(sheet)
-                df.columns = [col.lower() for col in df.columns]
+                df.columns = [c.lower() for c in df.columns]
 
-                debit_col = next((col for col in df.columns if 'debit' in col), None)
-                credit_col = next((col for col in df.columns if 'credit' in col), None)
-                balance_col = next((col for col in df.columns if 'balance' in col), None)
-                extracted_col = next((col for col in df.columns if 'extracted name' in col), None)
+                extracted = next((c for c in df.columns if 'extracted name' in c), None)
+                debit = next((c for c in df.columns if 'debit' in c), None)
+                credit = next((c for c in df.columns if 'credit' in c), None)
+                balance = next((c for c in df.columns if 'balance' in c), None)
 
-                for col in [debit_col, credit_col, balance_col]:
+                for col in [debit, credit, balance]:
                     if col:
                         df[col] = pd.to_numeric(df[col], errors='coerce')
 
-                if extracted_col:
-                    pivot = df.groupby(df[extracted_col]).agg({
-                        debit_col: 'sum',
-                        credit_col: 'sum'
+                if extracted:
+                    pivot = df.groupby(df[extracted]).agg({
+                        debit: 'sum',
+                        credit: 'sum'
                     }).reset_index()
-                    pivot_data[sheet] = pivot
+                    pivot_results[sheet] = pivot
                     pivot.to_excel(writer, sheet_name=f"Pivot_{sheet}", index=False)
                     ws = writer.sheets[f"Pivot_{sheet}"]
                     for i, col in enumerate(pivot.columns):
                         ws.write(0, i, col, head_fmt)
                         ws.set_column(i, i, 22, money_fmt)
 
-                    st.markdown(f"### 🔍 Pivot Table - **{sheet}**")
+                    st.markdown(f"### 📊 Pivot Table: {sheet.replace('Processed_', '')}")
                     st.dataframe(pivot)
 
-                if balance_col and not df[balance_col].dropna().empty:
-                    closing = df[balance_col].dropna().iloc[-1]
-                    currency = 'USD' if 'usd' in sheet.lower() else 'NGN'
-                    balance_data.append((sheet, closing, currency))
-                    if currency == 'USD':
+                if balance and not df[balance].dropna().empty:
+                    closing = df[balance].dropna().iloc[-1]
+                    currency = "USD" if "usd" in sheet.lower() else "NGN"
+                    balance_summary.append((sheet.replace("Processed_", ""), closing, currency))
+                    if currency == "USD":
                         total_usd += closing
                     else:
                         total_ngn += closing
@@ -141,21 +164,19 @@ elif selected_menu == "Bank Reconciliation":
                 st.divider()
 
             # Summary
-            closing_df = pd.DataFrame(balance_data, columns=["Sheet", "Closing Balance", "Currency"])
-            closing_df.to_excel(writer, sheet_name="Closing Balances", index=False)
+            summary_df = pd.DataFrame(balance_summary, columns=["Sheet", "Closing Balance", "Currency"])
+            summary_df.to_excel(writer, sheet_name="Closing Balances", index=False)
             ws = writer.sheets["Closing Balances"]
-            for i, col in enumerate(closing_df.columns):
+            for i, col in enumerate(summary_df.columns):
                 ws.write(0, i, col, head_fmt)
                 ws.set_column(i, i, 20, money_fmt)
 
-        output_excel.seek(0)
-
-        st.subheader("📈 Summary of Closing Balances")
-        st.dataframe(closing_df)
-
+        st.subheader("💼 Closing Balance Summary")
+        st.dataframe(summary_df)
         st.markdown("---")
         col1, col2 = st.columns(2)
-        col1.metric("💵 Total USD", f"${total_usd:,.2f}")
-        col2.metric("💰 Total NGN", f"₦{total_ngn:,.2f}")
+        col1.metric("USD Total", f"${total_usd:,.2f}")
+        col2.metric("NGN Total", f"₦{total_ngn:,.2f}")
 
-        st.download_button("📥 Download Reconciliation Excel", output_excel, file_name="reconciliation_output.xlsx")
+        output_excel.seek(0)
+        st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
