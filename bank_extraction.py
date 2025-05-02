@@ -23,7 +23,37 @@ if selected_menu == "Upload & Extract Names":
 
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
 
-    KNOWN_NAMES = [...]  # Your known names list as provided earlier
+    # Known name list (from provided code)
+    KNOWN_NAMES = [
+        "Dangote Cement", "Agrited Nigeria Ltd", "Max air",
+        "IDEOS TECHNOLOGY", "BIBAGE TECHNOLOGY",
+        "Balance B/F", "Emmantexlicon Global Services", "Avut Reiche Innovations",
+        "Alma Beta Agro", "Brightfield Solutions", "Nicdus Resources",
+        "Blemaur Oil And Gas", "Westtech Limited", "Adekoya Adeniyi Ayobami",
+        "Venture Garden Nig", "Greensource Insignia", "Coupons Retail",
+        "Morgan Adebowale Omotayo", "Alade Ibijoke", "Venur Nigeria Technology",
+        "Ifunanya Chinenye Igboanugo", "Nyerhovwo Alex Urhude", "Rebecca Ogochukwu Ekwueme",
+        "Dealmakers Energy", "AGK ENERGIES LIMITED", "Adisa Moshood Abiola",
+        "Classmobile Technologies", "Adino Partners", "Bluebulb Energy",
+        "Tanout Technologies", "Alasan Muhammad Nakofa Ventures", "Ardor Innovations",
+        "Tradepot", "Salmnine Investment", "Denero Global Services",
+        "Ifeoluwa Damola Kuponiyi", "Obi Ernest", "Proost Integrated",
+        "Faltas Innovation", "Starkraft-Nordic", "Gilbert Igweka",
+        "SDR AGRO", "Zydox Oil", "Captus Consilium", "STAMP DUTY",
+        "VAT", "ELECTRONIC MONEY TRANSFER LEVY", "Saravan Energy", "Kordax",
+        "Gruges Energy", "Texas Multinational Resources-Web", "Hofstede Essentials",
+        "Tekwanet Business Solutions", "Putsherd Integrated Solutions",
+        "Tmdk Terminal - Fidelity", "Chizoba Eunice Ezeonyido", "Lender Tech Solutions",
+        "Dania Oluwaseun Nurudeen", "Privolt Oil And Gas Services", "Tradedepot",
+        "Transactworld",
+        "Airpeace", "Willow Commercial Limited", "Payaza", "Flutterwave",
+        "Code Crafter", "Bridge Building", "Angel exports",
+        "Trzl - Westtech Limited", "Trzl - Willow Commercial Limited", "Trzl - Techcore Limited",
+        "Fidelity/Westtech", "Putsherd Integrated", "Beverly Trust",
+        "Gilbert", "Rukib Heritage", "Aduroja Temilade",
+        "Telex Charge", "Transfer Charge", "Ocrativane Integrated",
+        "WESTTECH:FIDELITY", "Adino Global", "TRZL-TECHCORE LIMITED", "Swift Charge"
+    ]
     KNOWN_NAMES_LOWER = [n.lower() for n in KNOWN_NAMES]
 
     def clean_entity(name):
