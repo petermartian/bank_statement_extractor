@@ -12,7 +12,6 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
 logging.basicConfig(level=logging.INFO)
 
-# --- Load Known Names from Google Sheet using Streamlit Secrets ---
 @st.cache_data(ttl=3600)
 def load_known_names():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -27,19 +26,17 @@ def load_known_names():
 
 KNOWN_NAMES, KNOWN_NAMES_LOWER = load_known_names()
 
-# --- Sidebar Menu ---
 with st.sidebar:
     selected_menu = st.selectbox("📂 Select Menu", ["Upload & Extract Names", "Bank Reconciliation"])
 
-# --- Menu 1: Upload & Extract Names ---
 if selected_menu == "Upload & Extract Names":
     st.title("📄 Upload Bank Statement")
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
 
     def clean_entity(name):
-        name = re.sub(r'[^A-Z\s\-]', '', name.upper())
-        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\b', '', name)
-        name = re.sub(r'\s+', ' ', name).strip()
+        name = re.sub(r'[^A-Z\\s\\-]', '', name.upper())
+        name = re.sub(r'\\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\\b', '', name)
+        name = re.sub(r'\\s+', ' ', name).strip()
         return name.title()
 
     def extract_transaction_name(description):
@@ -49,7 +46,7 @@ if selected_menu == "Upload & Extract Names":
         for idx, name in enumerate(KNOWN_NAMES_LOWER):
             if name in desc_lower:
                 return KNOWN_NAMES[idx]
-        parts = re.split(r'\||/', description)
+        parts = re.split(r'\\||/', description)
         for part in reversed(parts):
             cleaned = clean_entity(part)
             if len(cleaned.split()) >= 2:
@@ -84,8 +81,6 @@ if selected_menu == "Upload & Extract Names":
                         df.rename(columns={col: 'debit'}, inplace=True)
                     if 'credit' in col.lower():
                         df.rename(columns={col: 'credit'}, inplace=True)
-                    if 'balance' in col.lower():
-                        df.rename(columns={col: 'balance'}, inplace=True)
 
                 if 'description' not in df.columns:
                     st.error(f"Missing 'description' column in {sheet_name}")
@@ -95,19 +90,14 @@ if selected_menu == "Upload & Extract Names":
 
                 for col in ['debit', 'credit', 'balance']:
                     if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+                        df[col] = df[col].astype(str).str.replace(",", "").str.strip()
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
                 df.to_excel(writer, sheet_name=f"Processed_{sheet_name}", index=False)
 
                 st.success(f"✅ Processed: {sheet_name}")
                 st.subheader(f"🔍 Preview: {sheet_name}")
-                st.dataframe(
-                    df[['description', 'Extracted Name', 'debit', 'credit', 'balance']]
-                    .style
-                    .apply(lambda x: ["background-color: #212529" if i % 2 == 0 else "background-color: #343a40" for i in range(len(x))], axis=1)
-                    .format("{:.2f}", subset=['debit', 'credit', 'balance']),
-                    use_container_width=True
-                )
+                st.dataframe(df[['description', 'Extracted Name', 'debit', 'credit']].head(20))
 
                 summary = export_summary(df)
                 st.subheader(f"📊 Summary: {sheet_name}")
@@ -116,7 +106,6 @@ if selected_menu == "Upload & Extract Names":
         output_excel.seek(0)
         st.download_button("📥 Download Processed Excel File", output_excel, file_name=f"processed_{uploaded_file.name}")
 
-# --- Menu 2: Bank Reconciliation ---
 elif selected_menu == "Bank Reconciliation":
     st.title("🏦 Bank Reconciliation")
     recon_file = st.file_uploader("Upload Processed Excel File", type=["xlsx"], key="recon_file")
@@ -135,23 +124,28 @@ elif selected_menu == "Bank Reconciliation":
             money_fmt = workbook.add_format({'num_format': '#,##0.00'})
 
             for sheet in sheet_names:
-                safe_sheet = re.sub(r'[\[\]*:?\\/?*]', '_', f"Pivot_{sheet}")[:31]
                 df = xl.parse(sheet)
                 df.columns = [c.lower() for c in df.columns]
-
-                for col in ['debit', 'credit', 'balance']:
-                    if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
                 extracted = next((c for c in df.columns if 'extracted name' in c), None)
                 debit = next((c for c in df.columns if 'debit' in c), None)
                 credit = next((c for c in df.columns if 'credit' in c), None)
                 balance = next((c for c in df.columns if 'balance' in c), None)
 
+                for col in [debit, credit, balance]:
+                    if col:
+                        df[col] = pd.to_numeric(df[col], errors='coerce')
+
                 if extracted:
-                    pivot = df.groupby(df[extracted]).agg({debit: 'sum', credit: 'sum'}).reset_index()
-                    pivot.to_excel(writer, sheet_name=safe_sheet, index=False)
-                    ws = writer.sheets[safe_sheet]
+                    pivot = df.groupby(df[extracted]).agg({
+                        debit: 'sum',
+                        credit: 'sum'
+                    }).reset_index()
+                    safe_sheet_name = f"Pivot_{sheet}"[:31]
+                    safe_sheet_name = re.sub(r'[\\/*?:\\[\\]]', '', safe_sheet_name)
+                    pivot.to_excel(writer, sheet_name=safe_sheet_name, index=False)
+                    ws = writer.sheets[safe_sheet_name]  # ✅ consistent name
+
                     for i, col in enumerate(pivot.columns):
                         ws.write(0, i, col, head_fmt)
                         ws.set_column(i, i, 22, money_fmt)
@@ -171,41 +165,19 @@ elif selected_menu == "Bank Reconciliation":
                 st.divider()
 
             summary_df = pd.DataFrame(balance_summary, columns=["Sheet", "Closing Balance", "Currency"])
-            st.subheader("💼 Closing Balance Summary")
-            st.dataframe(
-                summary_df.style.apply(
-                    lambda x: ["background-color: #1c2e4a" if v == "USD" else "background-color: #1d412d" for v in x],
-                    subset=['Currency']
-                ),
-                use_container_width=True
-            )
-
             summary_df.to_excel(writer, sheet_name="Closing Balances", index=False)
             ws = writer.sheets["Closing Balances"]
             for i, col in enumerate(summary_df.columns):
                 ws.write(0, i, col, head_fmt)
                 ws.set_column(i, i, 20, money_fmt)
 
+        st.subheader("💼 Closing Balance Summary")
+        st.dataframe(summary_df)
         st.markdown("---")
         col1, col2 = st.columns(2)
-        with col1:
-            st.markdown(
-                f"""
-                <div style="background-color:#cfe2ff;padding:20px;border-radius:10px;text-align:center">
-                <h4 style="color:#084298">USD Total</h4>
-                <h2 style="color:#084298">${total_usd:,.2f}</h2>
-                </div>
-                """, unsafe_allow_html=True
-            )
-        with col2:
-            st.markdown(
-                f"""
-                <div style="background-color:#d1e7dd;padding:20px;border-radius:10px;text-align:center">
-                <h4 style="color:#0f5132">NGN Total</h4>
-                <h2 style="color:#0f5132">₦{total_ngn:,.2f}</h2>
-                </div>
-                """, unsafe_allow_html=True
-            )
-
+        col1.metric("USD Total", f"${total_usd:,.2f}")
+        col2.metric("NGN Total", f"₦{total_ngn:,.2f}")
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
+'''
+)
