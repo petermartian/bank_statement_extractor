@@ -12,6 +12,104 @@ from oauth2client.service_account import ServiceAccountCredentials
 st.set_page_config(page_title="S9 Bank Statement Processor", layout="wide")
 logging.basicConfig(level=logging.INFO)
 
+# Apply dark mode theme
+st.markdown(
+    """
+    <style>
+    body {
+        color: #e0e0e0;
+        background-color: #212121;
+    }
+    .stApp {
+        background-color: #212121;
+    }
+    .st-eb {
+        color: #e0e0e0;
+    }
+    .st-af {
+        background-color: #424242;
+        border-color: #616161;
+    }
+    .st-c8, .st-b7 {
+        color: #e0e0e0;
+    }
+    .st-c7, .st-b6{
+        background-color: #424242;
+        border-color: #616161;
+    }
+    /* Increase size and boldness of headers */
+    h1, h2, h3, h4, h5, h6 {
+        color: #ffffff;  /* Make headers white */
+        font-weight: bold;
+    }
+    /* Style for метrics */
+    div[data-testid="metric-container"] {
+        background-color: #3b82f6; /* Tailwind's blue-500 */
+        color: white;
+        padding: 16px;
+        border-radius: 8px;
+        box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1), 0 1px 3px rgba(0, 0, 0, 0.08);
+        border: 1px solid #6b7280; /* Tailwind's gray-500 */
+    }
+
+    div[data-testid="metric-label"] {
+        font-size: 1.1rem;
+        color: #f0f4f8; /* Tailwind's gray-100 */
+    }
+
+    div[data-testid="metric-value"] {
+        font-size: 1.5rem;
+        font-weight: bold;
+        color: white;
+    }
+
+    /* Style for выделенный текст (например, жирный) */
+    strong {
+        color: #ffdb58;  /* цвет  для выделения */
+        font-weight: bold;
+    }
+
+    /* Improved table styling */
+    .ag-theme-alpine {
+        --ag-foreground-color: #e0e0e0;
+        --ag-background-color: #2d3748;  /* Darker background */
+        --ag-header-background-color: #4a5568; /* Darker header */
+        --ag-header-foreground-color: #ffffff;
+        --ag-border-color: #718096;
+        --ag-row-hover-color: #4a5568;
+        --ag-row-selected-background-color: #4a5568;
+        --ag-alpine-active-color: #3182ce;
+    }
+
+    /* Стиль для Streamlit-кнопок */
+    .stButton > button {
+        color: #fff;
+        background-color: #4CAF50;
+        border: none;
+        padding: 10px 24px;
+        text-align: center;
+        text-decoration: none;
+        display: inline-block;
+        font-size: 16px;
+        margin: 4px 2px;
+        cursor: pointer;
+        border-radius: 8px;
+        transition: background-color 0.3s ease;
+    }
+
+    .stButton > button:hover {
+        background-color: #45a049;
+    }
+
+    .stButton > button:active {
+        background-color: #388e3c;
+    }
+
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
+
 @st.cache_data(ttl=3600)
 def load_known_names():
     scope = ["https://spreadsheets.google.com/feeds", "https://www.googleapis.com/auth/drive"]
@@ -34,9 +132,9 @@ if selected_menu == "Upload & Extract Names":
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
 
     def clean_entity(name):
-        name = re.sub(r'[^A-Z\\s\\-]', '', name.upper())
-        name = re.sub(r'\\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\\b', '', name)
-        name = re.sub(r'\\s+', ' ', name).strip()
+        name = re.sub(r'[^A-Z\s\-]', '', name.upper())
+        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\b', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
         return name.title()
 
     def extract_transaction_name(description):
@@ -46,7 +144,7 @@ if selected_menu == "Upload & Extract Names":
         for idx, name in enumerate(KNOWN_NAMES_LOWER):
             if name in desc_lower:
                 return KNOWN_NAMES[idx]
-        parts = re.split(r'\\||/', description)
+        parts = re.split(r'\||/', description)
         for part in reversed(parts):
             cleaned = clean_entity(part)
             if len(cleaned.split()) >= 2:
@@ -100,7 +198,7 @@ if selected_menu == "Upload & Extract Names":
                 st.dataframe(df[['description', 'Extracted Name', 'debit', 'credit']].head(20))
 
                 summary = export_summary(df)
-                st.subheader(f"📊 Summary: {sheet_name}")
+                st.markdown(f"<h3 style='font-size: 1.5rem; font-weight: bold;'>📊 Summary: {sheet_name}</h3>", unsafe_allow_html=True)
                 st.dataframe(summary)
 
         output_excel.seek(0)
@@ -150,7 +248,7 @@ elif selected_menu == "Bank Reconciliation":
                         ws.write(0, i, col, head_fmt)
                         ws.set_column(i, i, 22, money_fmt)
 
-                    st.markdown(f"### 📊 Pivot Table: {sheet.replace('Processed_', '')}")
+                    st.markdown(f"<h3 style='font-size: 1.5rem; font-weight: bold;'>📊 Pivot Table: {sheet.replace('Processed_', '')}</h3>", unsafe_allow_html=True)
                     st.dataframe(pivot)
 
                 if balance and not df[balance].dropna().empty:
@@ -171,7 +269,7 @@ elif selected_menu == "Bank Reconciliation":
                 ws.write(0, i, col, head_fmt)
                 ws.set_column(i, i, 20, money_fmt)
 
-        st.subheader("💼 Closing Balance Summary")
+        st.markdown("<h2 style='font-size: 2.0rem; font-weight: bold;'>💼 Closing Balance Summary</h2>", unsafe_allow_html=True)
         st.dataframe(summary_df)
         st.markdown("---")
         col1, col2 = st.columns(2)
@@ -179,4 +277,3 @@ elif selected_menu == "Bank Reconciliation":
         col2.metric("NGN Total", f"₦{total_ngn:,.2f}")
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
-
