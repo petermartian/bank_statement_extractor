@@ -179,5 +179,4 @@ elif selected_menu == "Bank Reconciliation":
         col2.metric("NGN Total", f"₦{total_ngn:,.2f}")
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
-'''
-)
+
