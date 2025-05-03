@@ -1,6 +1,3 @@
-
-# ----------------- S9 Bank Statement Processor -----------------
-
 import streamlit as st
 import pandas as pd
 import re
@@ -87,6 +84,8 @@ if selected_menu == "Upload & Extract Names":
                         df.rename(columns={col: 'debit'}, inplace=True)
                     if 'credit' in col.lower():
                         df.rename(columns={col: 'credit'}, inplace=True)
+                    if 'balance' in col.lower():
+                        df.rename(columns={col: 'balance'}, inplace=True)
 
                 if 'description' not in df.columns:
                     st.error(f"Missing 'description' column in {sheet_name}")
@@ -96,17 +95,23 @@ if selected_menu == "Upload & Extract Names":
 
                 for col in ['debit', 'credit', 'balance']:
                     if col in df.columns:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
                 df.to_excel(writer, sheet_name=f"Processed_{sheet_name}", index=False)
 
                 st.success(f"✅ Processed: {sheet_name}")
                 st.subheader(f"🔍 Preview: {sheet_name}")
-                st.dataframe(df[['description', 'Extracted Name', 'debit', 'credit']].head(20), use_container_width=True)
+                st.dataframe(
+                    df[['description', 'Extracted Name', 'debit', 'credit', 'balance']]
+                    .style
+                    .apply(lambda x: ["background-color: #212529" if i % 2 == 0 else "background-color: #343a40" for i in range(len(x))], axis=1)
+                    .format("{:.2f}", subset=['debit', 'credit', 'balance']),
+                    use_container_width=True
+                )
 
                 summary = export_summary(df)
                 st.subheader(f"📊 Summary: {sheet_name}")
-                st.dataframe(summary, use_container_width=True)
+                st.dataframe(summary)
 
         output_excel.seek(0)
         st.download_button("📥 Download Processed Excel File", output_excel, file_name=f"processed_{uploaded_file.name}")
@@ -130,33 +135,29 @@ elif selected_menu == "Bank Reconciliation":
             money_fmt = workbook.add_format({'num_format': '#,##0.00'})
 
             for sheet in sheet_names:
-                clean_name = re.sub(r'[^A-Za-z0-9_]', '_', sheet)
+                safe_sheet = re.sub(r'[\[\]*:?\\/?*]', '_', f"Pivot_{sheet}")[:31]
                 df = xl.parse(sheet)
                 df.columns = [c.lower() for c in df.columns]
+
+                for col in ['debit', 'credit', 'balance']:
+                    if col in df.columns:
+                        df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
 
                 extracted = next((c for c in df.columns if 'extracted name' in c), None)
                 debit = next((c for c in df.columns if 'debit' in c), None)
                 credit = next((c for c in df.columns if 'credit' in c), None)
                 balance = next((c for c in df.columns if 'balance' in c), None)
 
-                for col in [debit, credit, balance]:
-                    if col:
-                        df[col] = pd.to_numeric(df[col], errors='coerce')
-
                 if extracted:
-                    pivot = df.groupby(df[extracted]).agg({
-                        debit: 'sum',
-                        credit: 'sum'
-                    }).reset_index()
-                    safe_sheet_name = f"Pivot_{clean_name[:25]}"
-                    pivot.to_excel(writer, sheet_name=safe_sheet_name, index=False)
-                    ws = writer.sheets[safe_sheet_name]
+                    pivot = df.groupby(df[extracted]).agg({debit: 'sum', credit: 'sum'}).reset_index()
+                    pivot.to_excel(writer, sheet_name=safe_sheet, index=False)
+                    ws = writer.sheets[safe_sheet]
                     for i, col in enumerate(pivot.columns):
                         ws.write(0, i, col, head_fmt)
                         ws.set_column(i, i, 22, money_fmt)
 
                     st.markdown(f"### 📊 Pivot Table: {sheet.replace('Processed_', '')}")
-                    st.dataframe(pivot, use_container_width=True)
+                    st.dataframe(pivot)
 
                 if balance and not df[balance].dropna().empty:
                     closing = df[balance].dropna().iloc[-1]
@@ -170,41 +171,41 @@ elif selected_menu == "Bank Reconciliation":
                 st.divider()
 
             summary_df = pd.DataFrame(balance_summary, columns=["Sheet", "Closing Balance", "Currency"])
+            st.subheader("💼 Closing Balance Summary")
+            st.dataframe(
+                summary_df.style.apply(
+                    lambda x: ["background-color: #1c2e4a" if v == "USD" else "background-color: #1d412d" for v in x],
+                    subset=['Currency']
+                ),
+                use_container_width=True
+            )
+
             summary_df.to_excel(writer, sheet_name="Closing Balances", index=False)
             ws = writer.sheets["Closing Balances"]
             for i, col in enumerate(summary_df.columns):
                 ws.write(0, i, col, head_fmt)
                 ws.set_column(i, i, 20, money_fmt)
 
-        st.subheader("💼 Closing Balance Summary")
-
-        def highlight_currency(row):
-            if row["Currency"] == "USD":
-                return ['background-color: #132743; color: #F8F9FA'] * len(row)
-            elif row["Currency"] == "NGN":
-                return ['background-color: #1B4332; color: #F8F9FA'] * len(row)
-            else:
-                return [''] * len(row)
-
-        styled_summary = summary_df.style.apply(highlight_currency, axis=1)
-        st.dataframe(styled_summary, use_container_width=True)
-
         st.markdown("---")
         col1, col2 = st.columns(2)
-
-        col1.markdown(f"""
-        <div style='background-color:#1A2E45;padding:20px;border-radius:10px;text-align:center'>
-            <h4 style='margin-bottom:5px;color:#FFFFFF;'>USD Total</h4>
-            <h2 style='color:#4DA3FF;'>${total_usd:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
-
-        col2.markdown(f"""
-        <div style='background-color:#193A2E;padding:20px;border-radius:10px;text-align:center'>
-            <h4 style='margin-bottom:5px;color:#FFFFFF;'>NGN Total</h4>
-            <h2 style='color:#51CF66;'>₦{total_ngn:,.2f}</h2>
-        </div>
-        """, unsafe_allow_html=True)
+        with col1:
+            st.markdown(
+                f"""
+                <div style="background-color:#cfe2ff;padding:20px;border-radius:10px;text-align:center">
+                <h4 style="color:#084298">USD Total</h4>
+                <h2 style="color:#084298">${total_usd:,.2f}</h2>
+                </div>
+                """, unsafe_allow_html=True
+            )
+        with col2:
+            st.markdown(
+                f"""
+                <div style="background-color:#d1e7dd;padding:20px;border-radius:10px;text-align:center">
+                <h4 style="color:#0f5132">NGN Total</h4>
+                <h2 style="color:#0f5132">₦{total_ngn:,.2f}</h2>
+                </div>
+                """, unsafe_allow_html=True
+            )
 
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
