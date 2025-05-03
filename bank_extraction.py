@@ -1,3 +1,6 @@
+
+# ----------------- S9 Bank Statement Processor -----------------
+
 import streamlit as st
 import pandas as pd
 import re
@@ -37,9 +40,9 @@ if selected_menu == "Upload & Extract Names":
     uploaded_file = st.file_uploader("Upload Excel or CSV File", type=["xlsx", "xls", "csv"])
 
     def clean_entity(name):
-        name = re.sub(r'[^A-Z\\s\\-]', '', name.upper())
-        name = re.sub(r'\\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\\b', '', name)
-        name = re.sub(r'\\s+', ' ', name).strip()
+        name = re.sub(r'[^A-Z\s\-]', '', name.upper())
+        name = re.sub(r'\b(LIMITED|LTD|PLC|ENTERPRISE|ACCOUNT|AC|USD FOREX PURCHASE TRANSACTION|NIP|WILLOW)\b', '', name)
+        name = re.sub(r'\s+', ' ', name).strip()
         return name.title()
 
     def extract_transaction_name(description):
@@ -49,7 +52,7 @@ if selected_menu == "Upload & Extract Names":
         for idx, name in enumerate(KNOWN_NAMES_LOWER):
             if name in desc_lower:
                 return KNOWN_NAMES[idx]
-        parts = re.split(r'\\||/', description)
+        parts = re.split(r'\||/', description)
         for part in reversed(parts):
             cleaned = clean_entity(part)
             if len(cleaned.split()) >= 2:
@@ -189,19 +192,19 @@ elif selected_menu == "Bank Reconciliation":
         st.markdown("---")
         col1, col2 = st.columns(2)
 
-        col1.markdown(f\"\"\"
+        col1.markdown(f"""
         <div style='background-color:#1A2E45;padding:20px;border-radius:10px;text-align:center'>
             <h4 style='margin-bottom:5px;color:#FFFFFF;'>USD Total</h4>
             <h2 style='color:#4DA3FF;'>${total_usd:,.2f}</h2>
         </div>
-        \"\"\", unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
-        col2.markdown(f\"\"\"
+        col2.markdown(f"""
         <div style='background-color:#193A2E;padding:20px;border-radius:10px;text-align:center'>
             <h4 style='margin-bottom:5px;color:#FFFFFF;'>NGN Total</h4>
             <h2 style='color:#51CF66;'>₦{total_ngn:,.2f}</h2>
         </div>
-        \"\"\", unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
 
         output_excel.seek(0)
         st.download_button("📥 Download Reconciliation Report", output_excel, file_name="reconciliation_output.xlsx")
